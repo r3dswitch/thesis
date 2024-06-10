@@ -127,7 +127,64 @@ class ShadowHandOver(BaseTask):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
-        self.shadow_hand_default_dof_pos = torch.zeros(self.num_shadow_hand_dofs, dtype=torch.float, device=self.device)
+        self.shadow_hand_default_dof_pos = to_torch([-0.9,
+                -1.57,
+                -0.9,
+                -2.9,
+                1.2,
+                0.44,
+                -0.9,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        dtype=torch.float, device=self.device)
+        self.shadow_hand_another_default_dof_pos = to_torch([-1.4,
+                1.57,
+                0,
+                0.7,
+                1.2,
+                0.44,
+                -0.9,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
+        dtype=torch.float, device=self.device)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.shadow_hand_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_shadow_hand_dofs]
         self.shadow_hand_dof_pos = self.shadow_hand_dof_state[..., 0]
@@ -466,6 +523,8 @@ class ShadowHandOver(BaseTask):
         
         action_another_obs_start = fingertip_another_obs_start + num_ft_states
 
+        action_another_obs_start = action_obs_start + 3 * self.num_shadow_hand_dofs + num_ft_states
+
         obj_obs_start = action_another_obs_start + self.num_shadow_hand_dofs
         self.obs_buf[:, obj_obs_start:obj_obs_start + 7] = self.object_pose
         self.obs_buf[:, obj_obs_start + 7:obj_obs_start + 10] = self.object_linvel
@@ -576,12 +635,12 @@ class ShadowHandOver(BaseTask):
         if self.randomize:
             self.apply_randomizations(self.randomization_params)
 
-        rand_floats = torch_rand_float(-1.0, 1.0, (len(env_ids), self.num_shadow_hand_dofs * 2 + 5), device=self.device)
+        rand_floats = torch_rand_float(-1.0, 1.0, (len(env_ids), self.num_shadow_hand_dofs * 2), device=self.device)
 
         self.reset_target_pose(env_ids)
 
         self.root_state_tensor[self.object_indices[env_ids]] = self.object_init_state[env_ids].clone()
-        self.root_state_tensor[self.object_indices[env_ids], 0:2] = self.object_init_state[env_ids, 0:2] + self.reset_position_noise * rand_floats[:, 0:2]
+        self.root_state_tensor[self.object_indices[env_ids], 0:2] = self.object_init_state[env_ids, 0:2] # + self.reset_position_noise * rand_floats[:, 0:2]
         self.root_state_tensor[self.object_indices[env_ids], self.up_axis_idx] = self.object_init_state[env_ids, self.up_axis_idx] + self.reset_position_noise * rand_floats[:, self.up_axis_idx]
 
         new_object_rot = randomize_rotation(rand_floats[:, 3], rand_floats[:, 4], self.x_unit_tensor[env_ids], self.y_unit_tensor[env_ids])
@@ -595,30 +654,26 @@ class ShadowHandOver(BaseTask):
 
         delta_max = self.shadow_hand_dof_upper_limits - self.shadow_hand_dof_default_pos
         delta_min = self.shadow_hand_dof_lower_limits - self.shadow_hand_dof_default_pos
-        rand_delta = delta_min + (delta_max - delta_min) * rand_floats[:, 5:5+self.num_shadow_hand_dofs]
+        rand_delta = delta_min + (delta_max - delta_min) * rand_floats[:, :self.num_shadow_hand_dofs]
 
         pos = self.shadow_hand_default_dof_pos + self.reset_dof_pos_noise * rand_delta
+        pos_another = self.shadow_hand_another_default_dof_pos + self.reset_dof_pos_noise * rand_delta
 
+        print(pos[0]-self.shadow_hand_default_dof_pos[0])
         self.shadow_hand_dof_pos[env_ids, :] = pos
-        self.shadow_hand_another_dof_pos[env_ids, :] = pos
-
-        self.shadow_hand_dof_vel[env_ids, :] = self.shadow_hand_dof_default_vel + \
-            self.reset_dof_vel_noise * rand_floats[:, 5+self.num_shadow_hand_dofs:5+self.num_shadow_hand_dofs*2]   
-
-        self.shadow_hand_another_dof_vel[env_ids, :] = self.shadow_hand_dof_default_vel + \
-            self.reset_dof_vel_noise * rand_floats[:, 5+self.num_shadow_hand_dofs:5+self.num_shadow_hand_dofs*2]
+        self.shadow_hand_another_dof_pos[env_ids, :] = pos_another
 
         self.prev_targets[env_ids, :self.num_shadow_hand_dofs] = pos
         self.cur_targets[env_ids, :self.num_shadow_hand_dofs] = pos
 
-        self.prev_targets[env_ids, self.num_shadow_hand_dofs:self.num_shadow_hand_dofs*2] = pos
-        self.cur_targets[env_ids, self.num_shadow_hand_dofs:self.num_shadow_hand_dofs*2] = pos
+        self.prev_targets[env_ids, self.num_shadow_hand_dofs:self.num_shadow_hand_dofs*2] = pos_another
+        self.cur_targets[env_ids, self.num_shadow_hand_dofs:self.num_shadow_hand_dofs*2] = pos_another
 
         hand_indices = self.hand_indices[env_ids].to(torch.int32)
         another_hand_indices = self.another_hand_indices[env_ids].to(torch.int32)
         all_hand_indices = torch.unique(torch.cat([hand_indices,
                                                  another_hand_indices]).to(torch.int32))
-
+        
         self.gym.set_dof_position_target_tensor_indexed(self.sim,
                                                         gymtorch.unwrap_tensor(self.prev_targets),
                                                         gymtorch.unwrap_tensor(all_hand_indices), len(all_hand_indices))  
@@ -644,7 +699,6 @@ class ShadowHandOver(BaseTask):
         
         target_pos = gymapi.Vec3(0,0,0.5)
         self.target_pos = torch.tensor([[target_pos.x, target_pos.y, target_pos.z]] * self.num_envs, dtype=torch.float32).to(self.device)
-        self.target_pos += self.actions[:,:3] * self.dt * 0.1
 
         target_rot = gymapi.Quat.from_euler_zyx(-1.7, 0, 0) 
         self.target_rot = torch.tensor([[target_rot.x, target_rot.y, target_rot.z, target_rot.w]] * self.num_envs, dtype=torch.float32).to(self.device)
@@ -800,15 +854,10 @@ def compute_hand_reward(
     fall_penalty: float, max_consecutive_successes: int, av_factor: float, ignore_z_rot: bool
 ):
     goal_dist = torch.norm(target_pos - object_pos, p=2, dim=-1)
-    if ignore_z_rot:
-        success_tolerance = 2.0 * success_tolerance
-
-    quat_diff = quat_mul(object_rot, quat_conjugate(target_rot))
-    rot_dist = 2.0 * torch.asin(torch.clamp(torch.norm(quat_diff[:, 0:3], p=2, dim=-1), max=1.0))
-
+    
     dist_rew = goal_dist
 
-    reward = torch.exp(-0.2*(dist_rew * dist_reward_scale + rot_dist))
+    reward = torch.exp(-0.2*(dist_rew * dist_reward_scale))
 
     goal_resets = torch.where(torch.abs(goal_dist) <= 0, torch.ones_like(reset_goal_buf), reset_goal_buf)
     successes = torch.where(successes == 0, 
@@ -819,13 +868,8 @@ def compute_hand_reward(
     reward = torch.where(object_pos[:, 2] <= 0.2, reward + fall_penalty, reward)
 
     resets = torch.where(object_pos[:, 2] <= 0.2, torch.ones_like(reset_buf), reset_buf)
-    if max_consecutive_successes > 0:
-        progress_buf = torch.where(torch.abs(rot_dist) <= success_tolerance, torch.zeros_like(progress_buf), progress_buf)
-        resets = torch.where(successes >= max_consecutive_successes, torch.ones_like(resets), resets)
+   
     resets = torch.where(progress_buf >= max_episode_length, torch.ones_like(resets), resets)
-
-    if max_consecutive_successes > 0:
-        reward = torch.where(progress_buf >= max_episode_length, reward + 0.5 * fall_penalty, reward)
 
     cons_successes = torch.where(resets > 0, successes * resets, consecutive_successes).mean()
 
