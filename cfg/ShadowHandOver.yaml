@@ -21,7 +21,7 @@ env:
 
   resetPositionNoise: 0.01
   resetRotationNoise: 0.0
-  resetDofPosRandomInterval: 0.2
+  resetDofPosRandomInterval: 0.05 # 0.2
   resetDofVelRandomInterval: 0.0
 
   distRewardScale: 50
