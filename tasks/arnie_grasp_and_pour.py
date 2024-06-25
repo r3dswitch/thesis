@@ -114,8 +114,8 @@ class ArnieGraspAndPour(BaseTask):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
-        self.left_diana_default_dof_pos = to_torch([-1.0,
-                -1.0,
+        self.left_diana_default_dof_pos = to_torch([-1.1, # -0.9
+                -1.4,
                 -3.1,
                 0.8,
                 3.1,
@@ -189,6 +189,7 @@ class ArnieGraspAndPour(BaseTask):
         self.root_state_tensor = gymtorch.wrap_tensor(actor_root_state_tensor).view(-1, 13)
         
         self.num_dofs = self.gym.get_sim_dof_count(self.sim) // self.num_envs
+        
         self.prev_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device)
         self.cur_targets = torch.zeros((self.num_envs, self.num_dofs), dtype=torch.float, device=self.device)
         
@@ -285,7 +286,7 @@ class ArnieGraspAndPour(BaseTask):
         right_diana_start_pose.r = gymapi.Quat().from_euler_zyx(-1.5652925671162337, 0, -0.227)
 
         object_start_pose = gymapi.Transform()
-        object_start_pose.p = gymapi.Vec3(-0.5,0,0.5)
+        object_start_pose.p = gymapi.Vec3(-0.4,0,0.7)
         object_start_pose.r = gymapi.Quat().from_euler_zyx(1.5652925671162337, 0, 0)
 
         table_start_pose = gymapi.Transform()
@@ -582,8 +583,8 @@ class ArnieGraspAndPour(BaseTask):
         rand_floats = torch_rand_float(-1.0, 1.0, (len(env_ids), self.num_diana_dofs * 2), device=self.device)
 
         self.root_state_tensor[self.object_indices[env_ids]] = self.object_init_state[env_ids].clone()
-        # self.root_state_tensor[self.object_indices[env_ids], 0:2] = self.object_init_state[env_ids, 0:2] + self.reset_position_noise * rand_floats[:, 0:2]
-        # self.root_state_tensor[self.object_indices[env_ids], self.up_axis_idx] = self.object_init_state[env_ids, self.up_axis_idx] + self.reset_position_noise * rand_floats[:, self.up_axis_idx]
+        self.root_state_tensor[self.object_indices[env_ids], 0:2] = self.object_init_state[env_ids, 0:2] + self.reset_position_noise * rand_floats[:, 0:2]
+        self.root_state_tensor[self.object_indices[env_ids], self.up_axis_idx] = self.object_init_state[env_ids, self.up_axis_idx] + self.reset_position_noise * rand_floats[:, self.up_axis_idx]
 
         # new_object_rot = randomize_rotation(rand_floats[:, 3], rand_floats[:, 4], self.x_unit_tensor[env_ids], self.y_unit_tensor[env_ids])
 
@@ -628,6 +629,11 @@ class ArnieGraspAndPour(BaseTask):
         self.reset_buf[env_ids] = 0
         self.successes[env_ids] = 0
 
+    def reset_alt(self, env_ids):
+        self.progress_buf[env_ids] = 0
+        self.reset_buf[env_ids] = 0
+        self.successes[env_ids] = 0
+
     def pre_physics_step(self, actions):
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
@@ -638,43 +644,31 @@ class ArnieGraspAndPour(BaseTask):
 
         self.actions = actions.clone().to(self.device)
         
-        self.cur_targets[:, self.actuated_dof_indices] = scale(self.actions[:, :self.num_diana_dofs], self.diana_dof_lower_limits[self.actuated_dof_indices], self.diana_dof_upper_limits[self.actuated_dof_indices])
-        self.cur_targets[:, self.actuated_dof_indices] = tensor_clamp(self.cur_targets[:, self.actuated_dof_indices], self.diana_dof_lower_limits[self.actuated_dof_indices], self.diana_dof_upper_limits[self.actuated_dof_indices])
+        # """
+        self.target_pos = self.object_pos.clone()
+        self.target_rot = self.object_rot.clone()
         
-        self.prev_targets[:, self.actuated_dof_indices] = self.cur_targets[:, self.actuated_dof_indices]
+        pos_err = self.target_pos - self.left_hand_pos
+        orn_err = orientation_error(self.target_rot, self.left_hand_rot)
+
+        dpose = torch.cat([pos_err, orn_err], -1).unsqueeze(-1)  
+        j_eef_T = torch.transpose(self.j_eef, 1, 2)
+        damping = 0.05
+        lmbda = torch.eye(6, device=self.device) * (damping ** 2)
+        u = (j_eef_T @ torch.inverse(self.j_eef @ j_eef_T + lmbda) @ dpose).view(self.num_envs, 7)     
+        
+        targets = self.prev_targets[:, :self.num_diana_dofs]
+        
+        targets[:, :7] = self.left_diana_dof_pos[:,:7] + u.squeeze(-1)
+        # input(targets[0])
+        self.cur_targets[:, :self.num_diana_dofs] = tensor_clamp(targets, self.diana_dof_lower_limits, self.diana_dof_upper_limits)
+        self.prev_targets = self.cur_targets
         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self.cur_targets))
-
-        """IK"""
-        # self.target_pos = self.object_pos.clone()
-        # self.target_rot = self.object_rot.clone()
-        
-        # pos_err = self.target_pos - self.left_hand_pos
-        # orn_err = orientation_error(self.target_rot, self.left_hand_rot)
-
-        # dpose = torch.cat([pos_err, orn_err], -1).unsqueeze(-1)  
-        # j_eef_T = torch.transpose(self.j_eef, 1, 2)
-        # damping = 0.05
-        # lmbda = torch.eye(6, device=self.device) * (damping ** 2)
-        # u = (j_eef_T @ torch.inverse(self.j_eef @ j_eef_T + lmbda) @ dpose).view(self.num_envs, 7)     
-        
-        # self.prev_targets[:, self.actuated_dof_indices] = self.cur_targets[:, self.actuated_dof_indices]
-        # self.cur_targets[:, :7] = self.left_diana_dof_pos[:, :7] + u.squeeze(-1)
-        # self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(self.cur_targets))
-        """IK Ends"""
+        # """
         
     def post_physics_step(self):
         self.progress_buf += 1
         self.randomize_buf += 1
-
-        env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-
-        if len(env_ids) > 0:
-            self.reset(env_ids)
-
-        self.gym.refresh_actor_root_state_tensor(self.sim)
-        self.gym.refresh_dof_state_tensor(self.sim)
-        self.gym.refresh_rigid_body_state_tensor(self.sim)
-        self.gym.refresh_jacobian_tensors(self.sim)
 
         self.compute_observations()
         self.compute_reward(self.actions)
@@ -782,7 +776,7 @@ def compute_hand_reward(
 
     successes = torch.where(successes == 0, torch.where(goal_dist < 0.1, torch.ones_like(successes), successes), successes)
 
-    resets = torch.where(goal_dist >= 1, torch.ones_like(reset_buf), reset_buf)
+    resets = torch.where(goal_dist >= 5, torch.ones_like(reset_buf), reset_buf)
    
     resets = torch.where(progress_buf >= max_episode_length, torch.ones_like(resets), resets)
 

@@ -129,7 +129,7 @@ class BaseTask():
     def step(self, actions):
         if self.dr_randomizations.get('actions', None):
             actions = self.dr_randomizations['actions']['noise_lambda'](actions)
-
+        
         # apply actions
         self.pre_physics_step(actions)
 
@@ -144,7 +144,7 @@ class BaseTask():
 
         # compute observations, rewards, resets, ...
         self.post_physics_step()
-
+        
         if self.dr_randomizations.get('observations', None):
             self.obs_buf = self.dr_randomizations['observations']['noise_lambda'](self.obs_buf)
 
