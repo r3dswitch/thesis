@@ -1,34 +1,4 @@
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
-from bidexhands.tasks.shadow_hand_over import ShadowHandOver
-from bidexhands.tasks.shadow_hand_catch_underarm import ShadowHandCatchUnderarm
-from bidexhands.tasks.shadow_hand_two_catch_underarm import ShadowHandTwoCatchUnderarm
-from bidexhands.tasks.shadow_hand_catch_abreast import ShadowHandCatchAbreast
-from bidexhands.tasks.shadow_hand_lift_underarm import ShadowHandLiftUnderarm
-from bidexhands.tasks.shadow_hand_catch_over2underarm import ShadowHandCatchOver2Underarm
-from bidexhands.tasks.shadow_hand_door_close_inward import ShadowHandDoorCloseInward
-from bidexhands.tasks.shadow_hand_door_close_outward import ShadowHandDoorCloseOutward
-from bidexhands.tasks.shadow_hand_door_open_inward import ShadowHandDoorOpenInward
-from bidexhands.tasks.shadow_hand_door_open_outward import ShadowHandDoorOpenOutward
-from bidexhands.tasks.shadow_hand_bottle_cap import ShadowHandBottleCap
-from bidexhands.tasks.shadow_hand_push_block import ShadowHandPushBlock
-from bidexhands.tasks.shadow_hand_swing_cup import ShadowHandSwingCup
-from bidexhands.tasks.shadow_hand_grasp_and_place import ShadowHandGraspAndPlace
-from bidexhands.tasks.shadow_hand_scissors import ShadowHandScissors
-from bidexhands.tasks.shadow_hand_switch import ShadowHandSwitch
-from bidexhands.tasks.shadow_hand_pen import ShadowHandPen
-from bidexhands.tasks.shadow_hand_re_orientation import ShadowHandReOrientation
-from bidexhands.tasks.shadow_hand_kettle import ShadowHandKettle
-from bidexhands.tasks.shadow_hand_block_stack import ShadowHandBlockStack
-
-# Allegro hand
-from bidexhands.tasks.allegro_hand_over import AllegroHandOver
-from bidexhands.tasks.allegro_hand_catch_underarm import AllegroHandCatchUnderarm
+from tasks.arnie_grasp_and_pour import ArnieGraspAndPour
 
 # Meta
 from bidexhands.tasks.shadow_hand_meta.shadow_hand_meta_mt1 import ShadowHandMetaMT1
